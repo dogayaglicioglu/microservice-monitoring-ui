@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Terminal, ChevronDown, Filter } from 'lucide-react'
+import { Terminal, ChevronDown, Filter, ExternalLink } from 'lucide-react'
+
+const JAEGER_BASE = import.meta.env.VITE_JAEGER_URL ?? ''
 
 const LEVEL_STYLES = {
   INFO: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -103,8 +105,21 @@ export default function LogsPanel({ logs, searchQuery }) {
               {log.level}
             </span>
 
-            {/* Trace ID */}
-            <span className="text-gray-600 tabular-nums truncate">{log.traceId}</span>
+            {/* Trace ID — clickable if VITE_JAEGER_URL is configured */}
+            {JAEGER_BASE ? (
+              <a
+                href={`${JAEGER_BASE}/trace/${log.traceId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-gray-600 tabular-nums truncate hover:text-blue-400 transition-colors group/trace"
+                onClick={e => e.stopPropagation()}
+              >
+                <span className="truncate">{log.traceId}</span>
+                <ExternalLink size={10} className="shrink-0 opacity-0 group-hover/trace:opacity-100 transition-opacity" />
+              </a>
+            ) : (
+              <span className="text-gray-600 tabular-nums truncate">{log.traceId}</span>
+            )}
 
             {/* Message */}
             <span className={`truncate ${log.level === 'ERROR' ? 'text-red-300' : log.level === 'WARN' ? 'text-amber-300' : 'text-gray-300'}`}>

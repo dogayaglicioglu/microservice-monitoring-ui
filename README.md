@@ -93,6 +93,9 @@ go run .
 ```bash
 # .env.local
 VITE_API_BASE=http://localhost:4000
+
+# Optional: set your Jaeger URL to make trace IDs in the Log Explorer clickable
+# VITE_JAEGER_URL=http://localhost:16686
 ```
 
 Then in [`src/App.jsx`](src/App.jsx), change:
@@ -101,6 +104,62 @@ const USE_MOCK = false
 ```
 
 Restart the dev server — the dashboard now shows your real service data.
+
+> **Trace ID links** — if `VITE_JAEGER_URL` is set, every trace ID in the Log Explorer becomes a clickable link that opens the trace directly in Jaeger. Without it, trace IDs are shown as plain text. Any Jaeger-compatible UI works (Grafana Tempo, etc.) as long as it uses the `/trace/{id}` URL pattern.
+
+### 4. Add a log endpoint to each service
+
+The dashboard's Log Explorer tab calls `GET /logs` on each service (via the aggregator). Each service must expose this endpoint returning an array of log entries:
+
+**`GET /logs`**
+```json
+[
+  {
+    "id": "auth-service-42",
+    "timestamp": "2024-01-15T10:30:00.123Z",
+    "service": "auth-service",
+    "level": "INFO",
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "message": "Token validated successfully"
+  }
+]
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | unique per entry, e.g. `"service-name-42"` |
+| `timestamp` | string | ISO 8601 — used to sort the merged stream |
+| `service` | string | displayed in the log table |
+| `level` | string | `INFO` `WARN` `ERROR` `DEBUG` |
+| `traceId` | string | links log entries to traces; use your OTel trace ID or any hex string |
+| `message` | string | the log message |
+
+Return entries newest-first, capped at ~200. The aggregator merges all services' log streams and re-sorts by timestamp before serving `/api/logs`.
+
+**Connecting an existing logger**
+
+Most structured loggers can write a middleware that appends to an in-memory ring buffer:
+
+```go
+// Go — slog / zap / logrus: extract the OTel trace ID and append to your buffer
+traceID := trace.SpanFromContext(ctx).SpanContext().TraceID().String()
+```
+
+```js
+// Node.js — pino / winston: pull the trace ID from your OTel SDK
+const { trace } = require('@opentelemetry/api')
+const traceId = trace.getActiveSpan()?.spanContext().traceId ?? crypto.randomUUID()
+```
+
+```python
+# Python — structlog / logging: same pattern
+from opentelemetry import trace
+trace_id = format(trace.get_current_span().get_span_context().trace_id, '032x')
+```
+
+**Forwarding from an existing log aggregator**
+
+If you already ship logs to Loki, Elasticsearch, or CloudWatch, you can write a thin adapter that queries those systems and reshapes the response into the schema above. The aggregator polls `/logs` on a schedule, so your adapter just needs to be a reachable HTTP endpoint.
 
 ### Alert thresholds
 
@@ -128,6 +187,57 @@ The dashboard expects these endpoints from the aggregator:
 | `GET /api/logs?limit=200` | merged log entries from all services |
 
 Full type shapes are in [`src/data/mockData.js`](src/data/mockData.js).
+
+---
+
+## OpenTelemetry / Distributed Tracing
+
+The bundled Go services ship with [OpenTelemetry](https://opentelemetry.io) instrumentation via `otelgin`. Every HTTP request gets a real trace ID that is automatically attached to log entries — so you can correlate a log line in the dashboard back to a full trace in Jaeger.
+
+### Running with Jaeger (full trace UI)
+
+```bash
+cd observex-backend
+docker compose up
+```
+
+This starts all three services plus an **OTel Collector** (`:4317`/`:4318`) and **Jaeger** (UI at [http://localhost:16686](http://localhost:16686)).
+
+Each service reads `OTEL_EXPORTER_OTLP_ENDPOINT` to decide where to ship spans. Without it, spans are still created (so log entries get real trace IDs) but are discarded.
+
+### Adding OTel to your own service
+
+Install the SDK for your language, then wrap your HTTP server. The Go pattern used here:
+
+```go
+// 1. init once at startup
+tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), ...)
+otel.SetTracerProvider(tp)
+
+// 2. middleware on your router
+r.Use(otelgin.Middleware("your-service-name"))
+
+// 3. extract trace ID from request context for log entries
+span := trace.SpanFromContext(c.Request.Context())
+traceID := span.SpanContext().TraceID().String()
+```
+
+The same pattern exists for Node.js (`@opentelemetry/sdk-node`), Python (`opentelemetry-sdk`), and Java (`opentelemetry-java`). Point `OTEL_EXPORTER_OTLP_ENDPOINT` at the collector and traces flow through automatically.
+
+---
+
+## Roadmap
+
+Current architecture uses a **pull model** — the aggregator polls each service's `/health`, `/metrics`, and `/logs` endpoints every 10 seconds. This is intentionally simple: add three endpoints, get a working dashboard.
+
+The following would take this further:
+
+- [ ] **Native OTLP log ingestion** — instead of polling `/logs`, accept logs pushed via OTLP so services don't need to maintain their own ring buffer. Would need a log storage backend (e.g. Loki) and a query adapter in the aggregator.
+- [ ] **Prometheus metrics backend** — replace the `/metrics` poll with a Prometheus query API adapter so the aggregator reads from an existing Prometheus instead of scraping services directly.
+- [ ] **Grafana Tempo / Zipkin support** — the Jaeger trace link currently assumes the `/trace/{id}` URL pattern. A `VITE_TRACE_BACKEND=tempo|jaeger|zipkin` flag could adapt the link format per backend.
+- [ ] **More than 2 services** — aggregator is currently hardcoded to auth-service + order-service. Make it read a service registry (env var list or config file) so any number of services can be added without code changes.
+- [ ] **WebSocket / SSE push** — replace the 15-second poll in `useDashboardData.js` with a server-sent events stream for true real-time updates.
+- [ ] **Alerting webhooks** — when a threshold is breached (latency, error rate, uptime), POST to a Slack / PagerDuty / webhook URL instead of only showing the bell icon.
 
 ---
 
