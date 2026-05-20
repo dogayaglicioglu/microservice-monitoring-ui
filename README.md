@@ -2,13 +2,16 @@
 
 A production-style observability dashboard built with React + Tailwind CSS, inspired by Grafana and Datadog.
 
+**Live demo → [microservice-monitoring-ui.vercel.app](https://microservice-monitoring-ui.vercel.app)**
+
 ![Dashboard Screenshot](docs/screenshot.png)
 
 ## Features
 
 - **KPI Cards** — total requests, error rate, avg latency, active services
-- **Service Health Table** — status badges, latency, error rate, uptime bars, RPS per service
-- **Live Charts** — requests/second (line) and latency over time (area) via Recharts
+- **Service Health Table** — expandable rows with version, region, instance details
+- **Alert System** — bell icon shows live warnings/criticals based on latency, error rate and uptime thresholds
+- **Live Charts** — requests/second (line) and latency over time (area) with per-service toggle
 - **Log Explorer** — filterable log stream by level (INFO / WARN / ERROR / DEBUG) with search
 - **Services Page** — expanded per-service cards with uptime bar and instance details
 - **Search** — filters service table and logs simultaneously
@@ -24,10 +27,7 @@ A production-style observability dashboard built with React + Tailwind CSS, insp
 ## Getting Started
 
 ```bash
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
@@ -68,12 +68,12 @@ src/
   components/
     layout/
       Sidebar.jsx                # Nav sidebar
-      Topbar.jsx                 # Search + refresh bar
+      Topbar.jsx                 # Search + alert bell + refresh
     dashboard/
       KPICard.jsx                # Single metric card
-      ServiceTable.jsx           # Health table with uptime bars
-      RequestChart.jsx           # Recharts line chart
-      LatencyChart.jsx           # Recharts area chart
+      ServiceTable.jsx           # Health table with expandable rows
+      RequestChart.jsx           # Recharts line chart with service toggle
+      LatencyChart.jsx           # Recharts area chart with service toggle
       LogsPanel.jsx              # Filterable log stream
   pages/
     Dashboard.jsx                # Main dashboard layout

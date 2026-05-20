@@ -81,6 +81,7 @@ function AppShell({ data }) {
           onRefresh={handleRefresh}
           searchValue={searchQuery}
           lastRefreshed={lastRefreshed}
+          services={data.services}
         />
         <main className="flex-1 overflow-y-auto p-6">
           {activePage === 'dashboard' && <Dashboard {...pageProps} />}

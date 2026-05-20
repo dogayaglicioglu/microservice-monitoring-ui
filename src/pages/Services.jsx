@@ -69,9 +69,9 @@ export default function Services({ services, searchQuery }) {
               </div>
 
               <div className="grid grid-cols-5 gap-4 pt-4 border-t border-[#1f2937]">
-                <Metric label="Latency" value={svc.latency} unit="ms" />
-                <Metric label="Error Rate" value={`${svc.errorRate.toFixed(2)}`} unit="%" />
-                <Metric label="Req/s" value={svc.rps} />
+                <Metric label="Latency" value={Math.round(svc.latency)} unit="ms" />
+                <Metric label="Error Rate" value={Number(svc.errorRate).toFixed(2)} unit="%" />
+                <Metric label="Req/s" value={Math.round(svc.rps)} />
                 <Metric label="Uptime" value={`${svc.uptime.toFixed(2)}`} unit="%" />
                 <Metric label="Instances" value={svc.instances} />
               </div>
