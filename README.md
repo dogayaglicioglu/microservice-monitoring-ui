@@ -24,47 +24,122 @@ A production-style observability dashboard built with React + Tailwind CSS, insp
 - [Recharts](https://recharts.org) — charts
 - [Lucide React](https://lucide.dev) — icons
 
-## Getting Started
+---
+
+## Quick Start (mock data, no backend needed)
 
 ```bash
+git clone https://github.com/dogayaglicioglu/microservice-monitoring-ui
+cd microservice-monitoring-ui
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5173](http://localhost:5173). Works out of the box with simulated data.
 
-The app runs with **mock data by default** — no backend required.
+---
 
-## Connecting a Real Backend
+## Connecting Your Own Services
 
-Set `USE_MOCK = false` in [`src/App.jsx`](src/App.jsx) and point the app at your aggregator API:
+To monitor real services, you need two things:
+
+### 1. Add endpoints to each of your services
+
+Every service you want to monitor must expose these two endpoints:
+
+**`GET /health`**
+```json
+{
+  "service": "your-service-name",
+  "status": "healthy",
+  "version": "v1.0.0",
+  "region": "us-east-1",
+  "uptime": 99.95
+}
+```
+
+**`GET /metrics`**
+```json
+{
+  "rps": 120,
+  "latency": 45,
+  "errorRate": 0.3,
+  "totalReqs": 1500000
+}
+```
+
+`status` must be one of: `healthy` `degraded` `down`
+
+### 2. Run the aggregator
+
+The aggregator is a small Go server that scrapes your services and exposes a unified API for the dashboard.
+
+```bash
+git clone https://github.com/dogayaglicioglu/observex-backend
+cd observex-backend/aggregator
+
+# Point it at your services
+export AUTH_SERVICE_URL=http://your-auth-service:3001
+export ORDER_SERVICE_URL=http://your-order-service:3002
+
+go run .
+# Runs on :4000
+```
+
+> Don't have Go? The aggregator has a Dockerfile — run it with `docker build` instead.
+
+### 3. Connect the dashboard
 
 ```bash
 # .env.local
 VITE_API_BASE=http://localhost:4000
 ```
 
-The data hook in [`src/hooks/useDashboardData.js`](src/hooks/useDashboardData.js) fetches these endpoints:
+Then in [`src/App.jsx`](src/App.jsx), change:
+```js
+const USE_MOCK = false
+```
 
-| Endpoint | Description |
+Restart the dev server — the dashboard now shows your real service data.
+
+### Alert thresholds
+
+The bell icon auto-generates alerts based on these rules:
+
+| Metric | Warning | Critical |
+|---|---|---|
+| Latency | > 300ms | > 500ms |
+| Error rate | > 2% | > 5% |
+| Uptime | < 99% | — |
+| Status | degraded | down |
+
+---
+
+## API contract
+
+The dashboard expects these endpoints from the aggregator:
+
+| Endpoint | Returns |
 |---|---|
-| `GET /api/kpis` | Aggregate KPI numbers |
-| `GET /api/services` | Service health array |
-| `GET /api/metrics/rps?window=30m` | Time-series RPS per service |
-| `GET /api/metrics/latency?window=30m` | Time-series latency per service |
-| `GET /api/logs?limit=200` | Recent log entries |
+| `GET /api/kpis` | `{ totalRequests, errorRate, avgLatency, activeServices }` |
+| `GET /api/services` | array of service health objects |
+| `GET /api/metrics/rps` | time-series RPS per service (last 30 points) |
+| `GET /api/metrics/latency` | time-series latency per service (last 30 points) |
+| `GET /api/logs?limit=200` | merged log entries from all services |
 
-See [`src/data/mockData.js`](src/data/mockData.js) for the exact shapes each endpoint should return.
+Full type shapes are in [`src/data/mockData.js`](src/data/mockData.js).
+
+---
 
 ## Project Structure
 
 ```
 src/
-  App.jsx                        # Root — owns page state, data source switch
+  App.jsx                        # Root — owns page state, USE_MOCK switch
   hooks/
     useDashboardData.js          # Fetches all endpoints, polls every 15s
   data/
-    mockData.js                  # Mock time-series, services, logs
+    mockData.js                  # Simulated data (used when USE_MOCK=true)
   components/
     layout/
       Sidebar.jsx                # Nav sidebar
@@ -80,11 +155,3 @@ src/
     Services.jsx                 # Expanded service cards
     Logs.jsx                     # Full-page log explorer
 ```
-
-## Services (Mock)
-
-| Service | Status | Region |
-|---|---|---|
-| auth-service | Healthy | us-east-1 |
-| order-service | Degraded | us-west-2 |
-| payment-service | Healthy | eu-west-1 |
