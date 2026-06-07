@@ -9,7 +9,7 @@ async function fetchJSON(path) {
   return res.json()
 }
 
-export function useDashboardData() {
+export function useDashboardData(points = 90) {
   const [kpis, setKpis] = useState(null)
   const [services, setServices] = useState([])
   const [chartData, setChartData] = useState([])
@@ -24,8 +24,8 @@ export function useDashboardData() {
       const [k, s, rps, lat, l] = await Promise.all([
         fetchJSON('/api/kpis'),
         fetchJSON('/api/services'),
-        fetchJSON('/api/metrics/rps?window=30m'),
-        fetchJSON('/api/metrics/latency?window=30m'),
+        fetchJSON(`/api/metrics/rps?points=${points}`),
+        fetchJSON(`/api/metrics/latency?points=${points}`),
         fetchJSON('/api/logs?limit=200'),
       ])
       setKpis(k)
@@ -38,7 +38,7 @@ export function useDashboardData() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [points])
 
   // Initial fetch
   useEffect(() => { fetchAll() }, [fetchAll])

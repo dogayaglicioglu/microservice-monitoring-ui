@@ -1,9 +1,10 @@
-import { LayoutDashboard, Server, ScrollText, Activity, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Server, ScrollText, Activity, ChevronRight, GitBranch } from 'lucide-react'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'services', label: 'Services', icon: Server },
-  { id: 'logs', label: 'Logs', icon: ScrollText },
+  { id: 'dashboard', label: 'Dashboard',  icon: LayoutDashboard },
+  { id: 'services',  label: 'Services',   icon: Server },
+  { id: 'logs',      label: 'Logs',       icon: ScrollText },
+  { id: 'topology',  label: 'Topology',   icon: GitBranch },
 ]
 
 export default function Sidebar({ activePage, onNavigate }) {

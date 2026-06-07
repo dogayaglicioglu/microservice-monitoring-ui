@@ -4,6 +4,7 @@ import Topbar from './components/layout/Topbar'
 import Dashboard from './pages/Dashboard'
 import Services from './pages/Services'
 import Logs from './pages/Logs'
+import Topology from './pages/Topology'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
 
@@ -16,8 +17,11 @@ import {
   logs as mockLogs,
 } from './data/mockData'
 
-// Real data hook (used when USE_MOCK = false)
+// Real data hooks
 import { useDashboardData } from './hooks/useDashboardData'
+import { useSSEData } from './hooks/useSSEData'
+
+const USE_SSE = import.meta.env.VITE_USE_SSE !== 'false'
 
 function LoadingScreen() {
   return (
@@ -52,7 +56,9 @@ function ErrorScreen({ message, onRetry }) {
   )
 }
 
-function AppShell({ data }) {
+const RANGE_POINTS = { '15m': 90, '30m': 180, '1h': 360 }
+
+function AppShell({ data, onTimeRangeChange, timeRange }) {
   const [activePage, setActivePage] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [lastRefreshed, setLastRefreshed] = useState(new Date())
@@ -69,6 +75,8 @@ function AppShell({ data }) {
     latencyData: data.latencyData,
     logs: data.logs,
     searchQuery,
+    timeRange,
+    onTimeRangeChange,
   }
 
   return (
@@ -86,6 +94,7 @@ function AppShell({ data }) {
           {activePage === 'dashboard' && <Dashboard {...pageProps} />}
           {activePage === 'services' && <Services services={data.services} searchQuery={searchQuery} />}
           {activePage === 'logs'     && <Logs logs={data.logs} searchQuery={searchQuery} />}
+          {activePage === 'topology' && <Topology services={data.services} />}
         </main>
       </div>
     </div>
@@ -107,18 +116,37 @@ function MockDataProvider({ children }) {
   return children(data)
 }
 
-function RealDataProvider({ children }) {
-  const data = useDashboardData()
+function PollingProvider({ children, points }) {
+  const data = useDashboardData(points)
   if (data.loading) return <LoadingScreen />
   if (data.error)   return <ErrorScreen message={data.error} onRetry={data.refetch} />
   return children(data)
 }
 
+function SSEProvider({ children, points }) {
+  const data = useSSEData(points)
+  if (data.loading) return <LoadingScreen />
+  if (data.error)   return <ErrorScreen message={data.error} onRetry={data.refetch} />
+  return children(data)
+}
+
+function RealDataProvider({ children, points }) {
+  const Impl = USE_SSE ? SSEProvider : PollingProvider
+  return <Impl points={points}>{children}</Impl>
+}
+
 export default function App() {
+  const [timeRange, setTimeRange] = useState('15m')
+  const points = RANGE_POINTS[timeRange]
+
+  function handleTimeRangeChange(label) {
+    setTimeRange(label)
+  }
+
   const Provider = USE_MOCK ? MockDataProvider : RealDataProvider
   return (
-    <Provider>
-      {data => <AppShell data={data} />}
+    <Provider points={points}>
+      {data => <AppShell data={data} timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />}
     </Provider>
   )
 }

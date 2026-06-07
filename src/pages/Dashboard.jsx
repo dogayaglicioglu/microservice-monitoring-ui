@@ -4,8 +4,9 @@ import ServiceTable from '../components/dashboard/ServiceTable'
 import RequestChart from '../components/dashboard/RequestChart'
 import LatencyChart from '../components/dashboard/LatencyChart'
 import LogsPanel from '../components/dashboard/LogsPanel'
+import TimeRangeSelector from '../components/dashboard/TimeRangeSelector'
 
-export default function Dashboard({ kpis, services, chartData, latencyData, logs, searchQuery }) {
+export default function Dashboard({ kpis, services, chartData, latencyData, logs, searchQuery, timeRange, onTimeRangeChange }) {
   const kpiCards = [
     {
       title: 'Total Requests',
@@ -57,9 +58,15 @@ export default function Dashboard({ kpis, services, chartData, latencyData, logs
       <ServiceTable services={services} searchQuery={searchQuery} />
 
       {/* Charts */}
-      <div className="grid grid-cols-2 gap-4">
-        <RequestChart data={chartData} />
-        <LatencyChart data={latencyData} />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500">Showing last <span className="text-gray-300 font-medium">{timeRange}</span></p>
+          <TimeRangeSelector value={timeRange} onChange={onTimeRangeChange} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <RequestChart data={chartData} />
+          <LatencyChart data={latencyData} />
+        </div>
       </div>
 
       {/* Logs */}

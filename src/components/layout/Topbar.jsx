@@ -1,67 +1,35 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, RefreshCw, Bell, Clock, AlertTriangle, XCircle, Info, CheckCircle2 } from 'lucide-react'
+import { Search, RefreshCw, Bell, Clock, AlertTriangle, XCircle, Info, CheckCircle2, Settings } from 'lucide-react'
+import { useAlertThresholds } from '../../hooks/useAlertThresholds'
+import ThresholdEditor from '../settings/ThresholdEditor'
 
 // -- Alert generation from service metrics --
 
-function computeAlerts(services = []) {
+function computeAlerts(services = [], t = {}) {
   const alerts = []
+  const { latencyWarn = 300, latencyCrit = 500, errorWarn = 2, errorCrit = 5, uptime = 99 } = t
 
   for (const svc of services) {
     if (svc.status === 'down') {
-      alerts.push({
-        id: `${svc.id}-down`,
-        severity: 'critical',
-        service: svc.name,
-        message: `Service is DOWN`,
-      })
+      alerts.push({ id: `${svc.id}-down`, severity: 'critical', service: svc.name, message: `Service is DOWN` })
     } else if (svc.status === 'degraded') {
-      alerts.push({
-        id: `${svc.id}-degraded`,
-        severity: 'warning',
-        service: svc.name,
-        message: `Service is degraded`,
-      })
+      alerts.push({ id: `${svc.id}-degraded`, severity: 'warning', service: svc.name, message: `Service is degraded` })
     }
 
-    if (svc.latency > 500) {
-      alerts.push({
-        id: `${svc.id}-latency-critical`,
-        severity: 'critical',
-        service: svc.name,
-        message: `Latency critical: ${Math.round(svc.latency)}ms (threshold 500ms)`,
-      })
-    } else if (svc.latency > 300) {
-      alerts.push({
-        id: `${svc.id}-latency-warn`,
-        severity: 'warning',
-        service: svc.name,
-        message: `High latency: ${Math.round(svc.latency)}ms (threshold 300ms)`,
-      })
+    if (svc.latency > latencyCrit) {
+      alerts.push({ id: `${svc.id}-latency-critical`, severity: 'critical', service: svc.name, message: `Latency critical: ${Math.round(svc.latency)}ms (threshold ${latencyCrit}ms)` })
+    } else if (svc.latency > latencyWarn) {
+      alerts.push({ id: `${svc.id}-latency-warn`, severity: 'warning', service: svc.name, message: `High latency: ${Math.round(svc.latency)}ms (threshold ${latencyWarn}ms)` })
     }
 
-    if (svc.errorRate > 5) {
-      alerts.push({
-        id: `${svc.id}-error-critical`,
-        severity: 'critical',
-        service: svc.name,
-        message: `Error rate critical: ${Number(svc.errorRate).toFixed(2)}% (threshold 5%)`,
-      })
-    } else if (svc.errorRate > 2) {
-      alerts.push({
-        id: `${svc.id}-error-warn`,
-        severity: 'warning',
-        service: svc.name,
-        message: `High error rate: ${Number(svc.errorRate).toFixed(2)}% (threshold 2%)`,
-      })
+    if (svc.errorRate > errorCrit) {
+      alerts.push({ id: `${svc.id}-error-critical`, severity: 'critical', service: svc.name, message: `Error rate critical: ${Number(svc.errorRate).toFixed(2)}% (threshold ${errorCrit}%)` })
+    } else if (svc.errorRate > errorWarn) {
+      alerts.push({ id: `${svc.id}-error-warn`, severity: 'warning', service: svc.name, message: `High error rate: ${Number(svc.errorRate).toFixed(2)}% (threshold ${errorWarn}%)` })
     }
 
-    if (svc.uptime < 99) {
-      alerts.push({
-        id: `${svc.id}-uptime`,
-        severity: 'warning',
-        service: svc.name,
-        message: `Low uptime: ${svc.uptime?.toFixed(2)}%`,
-      })
+    if (svc.uptime < uptime) {
+      alerts.push({ id: `${svc.id}-uptime`, severity: 'warning', service: svc.name, message: `Low uptime: ${svc.uptime?.toFixed(2)}%` })
     }
   }
 
@@ -99,9 +67,11 @@ const severityConfig = {
 export default function Topbar({ onSearch, onRefresh, searchValue, lastRefreshed, services = [] }) {
   const [spinning, setSpinning] = useState(false)
   const [open, setOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const [thresholds, updateThresholds, resetThresholds] = useAlertThresholds()
 
-  const alerts = computeAlerts(services)
+  const alerts = computeAlerts(services, thresholds)
   const criticalCount = alerts.filter(a => a.severity === 'critical').length
   const hasCritical = criticalCount > 0
 
@@ -213,6 +183,14 @@ export default function Topbar({ onSearch, onRefresh, searchValue, lastRefreshed
           )}
         </div>
 
+        {/* Settings */}
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="w-8 h-8 rounded-md border border-[#2a2d3e] bg-[#1a1d27] text-gray-400 hover:text-gray-200 hover:border-gray-600 flex items-center justify-center transition-colors"
+        >
+          <Settings size={14} />
+        </button>
+
         {/* Refresh */}
         <button
           onClick={handleRefresh}
@@ -222,6 +200,15 @@ export default function Topbar({ onSearch, onRefresh, searchValue, lastRefreshed
           Refresh
         </button>
       </div>
+
+      {settingsOpen && (
+        <ThresholdEditor
+          thresholds={thresholds}
+          onUpdate={updateThresholds}
+          onReset={resetThresholds}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </header>
   )
 }

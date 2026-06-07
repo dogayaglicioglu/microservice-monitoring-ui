@@ -10,12 +10,14 @@ A production-style observability dashboard built with React + Tailwind CSS, insp
 
 - **KPI Cards** — total requests, error rate, avg latency, active services
 - **Service Health Table** — expandable rows with version, region, instance details
-- **Alert System** — bell icon shows live warnings/criticals based on latency, error rate and uptime thresholds
-- **Live Charts** — requests/second (line) and latency over time (area) with per-service toggle
+- **Alert System** — bell icon with configurable latency/error rate/uptime thresholds; fires webhooks on breach
+- **Live Charts** — requests/second (line) and latency over time (area) with per-service toggle and time range selector (15m / 30m / 1h)
+- **Real-time updates** — SSE stream pushes chart data every 10 seconds without polling
 - **Log Explorer** — filterable log stream by level (INFO / WARN / ERROR / DEBUG) with search
 - **Services Page** — expanded per-service cards with uptime bar and instance details
+- **Topology** — service dependency graph with live health status coloring
 - **Search** — filters service table and logs simultaneously
-- **Auto-refresh** — polls the API every 15 seconds when connected to a real backend
+- **Prometheus adapter** — reads metrics from an existing Prometheus instead of scraping `/metrics` endpoints
 
 ## Tech Stack
 
@@ -120,6 +122,15 @@ cd aggregator && go run .
 
 The aggregator scrapes all listed services in parallel. If `SERVICES` is not set it falls back to `auth-service=http://localhost:3001,order-service=http://localhost:3002`.
 
+**Optional aggregator env vars:**
+
+| Env var | Purpose |
+|---|---|
+| `WEBHOOK_URL` | POST here when an alert threshold is breached |
+| `TOPOLOGY` | Dependency edges, e.g. `auth→order,order→payment` |
+| `PROMETHEUS_URL` | Read metrics from Prometheus instead of scraping `/metrics` |
+| `PROMETHEUS_LABEL_SERVICE` | Prometheus label that maps to service name (default: `service`) |
+
 ### 3. Connect the dashboard
 
 ```bash
@@ -191,7 +202,7 @@ If you already ship logs to Loki, Elasticsearch, or CloudWatch, you can write a 
 
 ### Alert thresholds
 
-The bell icon auto-generates alerts based on these rules:
+Default thresholds:
 
 | Metric | Warning | Critical |
 |---|---|---|
@@ -200,19 +211,40 @@ The bell icon auto-generates alerts based on these rules:
 | Uptime | < 99% | — |
 | Status | degraded | down |
 
+Click the ⚙️ icon in the top bar to edit thresholds — values are saved in the browser.
+
+To also receive webhook notifications when a threshold is breached, set `WEBHOOK_URL` on the aggregator (any HTTP endpoint; Slack incoming webhooks work out of the box). A 5-minute debounce per service/metric prevents alert storms.
+
+```bash
+WEBHOOK_URL=https://hooks.slack.com/services/... \
+SERVICES=... go run ./aggregator
+```
+
+Threshold env vars on the aggregator (optional, override defaults):
+
+| Env var | Default |
+|---|---|
+| `THRESHOLD_LATENCY_WARN` | 300 |
+| `THRESHOLD_LATENCY_CRIT` | 500 |
+| `THRESHOLD_ERROR_WARN` | 2 |
+| `THRESHOLD_ERROR_CRIT` | 5 |
+| `THRESHOLD_UPTIME` | 99 |
+
 ---
 
 ## API contract
-
-The dashboard expects these endpoints from the aggregator:
 
 | Endpoint | Returns |
 |---|---|
 | `GET /api/kpis` | `{ totalRequests, errorRate, avgLatency, activeServices }` |
 | `GET /api/services` | array of service health objects |
-| `GET /api/metrics/rps` | time-series RPS per service (last 30 points) |
-| `GET /api/metrics/latency` | time-series latency per service (last 30 points) |
+| `GET /api/metrics/rps?points=N` | time-series RPS per service (default 90 points = 15 min) |
+| `GET /api/metrics/latency?points=N` | time-series latency per service |
 | `GET /api/logs?limit=200` | merged log entries from all services |
+| `GET /api/stream` | SSE stream — pushes a snapshot every 10 seconds |
+| `GET /api/topology` | `{ nodes: string[], edges: [{source, target}] }` |
+
+`?points=N` accepts 1–360 (360 points × 10 s = 1 hour).
 
 Full type shapes are in [`src/data/mockData.js`](src/data/mockData.js).
 
@@ -259,12 +291,15 @@ Current architecture uses a **pull model** — the aggregator polls each service
 
 The following would take this further:
 
-- [ ] **Native OTLP log ingestion** — instead of polling `/logs`, accept logs pushed via OTLP so services don't need to maintain their own ring buffer. Would need a log storage backend (e.g. Loki) and a query adapter in the aggregator.
-- [ ] **Prometheus metrics backend** — replace the `/metrics` poll with a Prometheus query API adapter so the aggregator reads from an existing Prometheus instead of scraping services directly.
-- [ ] **Grafana Tempo / Zipkin support** — the Jaeger trace link currently assumes the `/trace/{id}` URL pattern. A `VITE_TRACE_BACKEND=tempo|jaeger|zipkin` flag could adapt the link format per backend.
-- [x] **More than 2 services** — aggregator reads `SERVICES=name=url,name=url,...` so any number of services can be monitored without code changes.
-- [ ] **WebSocket / SSE push** — replace the 15-second poll in `useDashboardData.js` with a server-sent events stream for true real-time updates.
-- [ ] **Alerting webhooks** — when a threshold is breached (latency, error rate, uptime), POST to a Slack / PagerDuty / webhook URL instead of only showing the bell icon.
+- [x] **More than 2 services** — aggregator reads `SERVICES=name=url,...` so any number of services can be monitored without code changes.
+- [x] **SSE push** — `/api/stream` pushes chart data every 10 seconds; frontend uses EventSource instead of polling.
+- [x] **Alerting webhooks** — `WEBHOOK_URL` env var; POST to Slack/PagerDuty when a threshold is breached, with 5-minute debounce.
+- [x] **Configurable alert thresholds** — editable via ⚙️ UI, saved in browser; also overridable via aggregator env vars.
+- [x] **Time range selector** — 15m / 30m / 1h chart window; aggregator stores up to 1 hour of history.
+- [x] **Prometheus adapter** — set `PROMETHEUS_URL` to read metrics from an existing Prometheus instead of scraping `/metrics`.
+- [x] **Topology page** — `TOPOLOGY=a→b,b→c` env var; SVG dependency graph with live health coloring.
+- [ ] **Native OTLP log ingestion** — accept logs pushed via OTLP; would need a log storage backend (e.g. Loki).
+- [ ] **Grafana Tempo / Zipkin support** — `VITE_TRACE_BACKEND=tempo|jaeger|zipkin` flag to adapt trace link URL format.
 
 ---
 
@@ -274,26 +309,37 @@ The following would take this further:
 aggregator/
   main.go                        # Go aggregator — scrapes services, serves /api/*
   Dockerfile                     # Multi-stage build (golang:alpine → alpine)
+examples/
+  go-gin/observex.go             # Drop-in middleware for Go/gin services
+  node-express/observex.js       # Drop-in middleware for Node.js/Express services
+  python-fastapi/observex.py     # Drop-in middleware for Python/FastAPI services
 src/
-  App.jsx                        # Root — VITE_USE_MOCK switch
+  App.jsx                        # Root — mock/real/SSE provider selection
   hooks/
-    useDashboardData.js          # Fetches all endpoints, polls every 15s
+    useDashboardData.js          # Polling data fetcher (VITE_USE_SSE=false)
+    useSSEData.js                # SSE-based real-time data hook
+    useAlertThresholds.js        # Alert threshold state + localStorage persistence
+    useTopology.js               # One-shot fetch from /api/topology
   data/
     mockData.js                  # Simulated data (used when VITE_USE_MOCK != "false")
   components/
     layout/
-      Sidebar.jsx                # Nav sidebar
-      Topbar.jsx                 # Search + alert bell + refresh
+      Sidebar.jsx                # Nav sidebar (Dashboard / Services / Logs / Topology)
+      Topbar.jsx                 # Search + alert bell + ⚙️ threshold editor + refresh
     dashboard/
       KPICard.jsx                # Single metric card
       ServiceTable.jsx           # Health table with expandable rows
-      RequestChart.jsx           # Recharts line chart with service toggle
-      LatencyChart.jsx           # Recharts area chart with service toggle
+      RequestChart.jsx           # Recharts line chart with per-service toggle
+      LatencyChart.jsx           # Recharts area chart with per-service toggle
       LogsPanel.jsx              # Filterable log stream
+      TimeRangeSelector.jsx      # 15m / 30m / 1h chart window picker
+    settings/
+      ThresholdEditor.jsx        # Modal for editing alert thresholds
   pages/
     Dashboard.jsx                # Main dashboard layout
-    Services.jsx                 # Expanded service cards
+    Services.jsx                 # Expanded per-service cards
     Logs.jsx                     # Full-page log explorer
+    Topology.jsx                 # SVG dependency graph with live health coloring
 Dockerfile                       # Frontend — builds React, serves via nginx
 nginx.conf                       # Proxies /api/* → aggregator, serves SPA
 docker-compose.yml               # Starts aggregator + dashboard together
