@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { CheckCircle2, AlertTriangle, XCircle, ChevronRight, Cpu, Globe, Tag, Server, Activity, ShieldAlert } from 'lucide-react'
 
 const statusConfig = {
@@ -134,9 +134,8 @@ export default function ServiceTable({ services, searchQuery }) {
               const isLast = i === filtered.length - 1
 
               return (
-                <>
+                <Fragment key={svc.id}>
                   <tr
-                    key={svc.id}
                     onClick={() => toggleRow(svc.id)}
                     className={`group border-b border-[#1a1d27] hover:bg-[#1a1d27] transition-colors cursor-pointer select-none ${
                       isExpanded ? 'bg-[#1a1d27]' : ''
@@ -210,13 +209,13 @@ export default function ServiceTable({ services, searchQuery }) {
 
                   {/* Detail panel */}
                   {isExpanded && (
-                    <tr key={`${svc.id}-detail`} className={isLast ? '' : 'border-b border-[#1f2937]'}>
+                    <tr className={isLast ? '' : 'border-b border-[#1f2937]'}>
                       <td colSpan={8} className="p-0">
                         <DetailPanel svc={svc} />
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               )
             })}
           </tbody>

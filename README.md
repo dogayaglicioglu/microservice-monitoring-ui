@@ -41,9 +41,43 @@ Open [http://localhost:5173](http://localhost:5173). Works out of the box with s
 
 ## Connecting Your Own Services
 
-To monitor real services, you need two things:
+Everything you need is in this repo — the dashboard frontend and the aggregator (a small Go server that scrapes your services) live side by side.
+
+There are two ways to run it:
+
+### Option A — Docker (recommended, no Go needed)
+
+Point the `SERVICES` variable at your running services, then:
+
+```bash
+SERVICES=my-api=http://host.docker.internal:3001,my-worker=http://host.docker.internal:3002 \
+  docker compose up --build
+```
+
+Dashboard opens at [http://localhost:3000](http://localhost:3000). That's it — no `.env` file, no code changes.
+
+> `host.docker.internal` resolves to your host machine from inside Docker. If your services are also in Docker, use their container names instead.
+
+### Option B — Run locally (dev mode)
+
+```bash
+# Terminal 1 — aggregator
+cd aggregator
+SERVICES=my-api=http://localhost:3001,my-worker=http://localhost:3002 go run .
+# runs on :4000
+
+# Terminal 2 — dashboard
+echo "VITE_USE_MOCK=false" >> .env.local
+echo "VITE_API_BASE=http://localhost:4000" >> .env.local
+npm run dev
+# runs on :5173
+```
+
+---
 
 ### 1. Add endpoints to each of your services
+
+> **Shortcut:** Copy the ready-made middleware from [`examples/`](examples/) for your stack (Go/gin, Node.js/Express, Python/FastAPI). Drop the file in, call `register` once — done.
 
 Every service you want to monitor must expose these two endpoints:
 
@@ -70,40 +104,34 @@ Every service you want to monitor must expose these two endpoints:
 
 `status` must be one of: `healthy` `degraded` `down`
 
-### 2. Run the aggregator
+`version`, `region`, and `uptime` are displayed as-is in the Service Health table and service cards.
 
-The aggregator is a small Go server that scrapes your services and exposes a unified API for the dashboard.
+### 2. Start the aggregator
+
+The aggregator lives in [`aggregator/`](aggregator/) — no separate repo needed.
 
 ```bash
-git clone https://github.com/dogayaglicioglu/observex-backend
-cd observex-backend/aggregator
+# name=url pairs, comma-separated — add as many services as you need
+export SERVICES=auth-service=http://localhost:3001,order-service=http://localhost:3002
 
-# Point it at your services
-export AUTH_SERVICE_URL=http://your-auth-service:3001
-export ORDER_SERVICE_URL=http://your-order-service:3002
-
-go run .
+cd aggregator && go run .
 # Runs on :4000
 ```
 
-> Don't have Go? The aggregator has a Dockerfile — run it with `docker build` instead.
+The aggregator scrapes all listed services in parallel. If `SERVICES` is not set it falls back to `auth-service=http://localhost:3001,order-service=http://localhost:3002`.
 
 ### 3. Connect the dashboard
 
 ```bash
 # .env.local
+VITE_USE_MOCK=false
 VITE_API_BASE=http://localhost:4000
 
 # Optional: set your Jaeger URL to make trace IDs in the Log Explorer clickable
 # VITE_JAEGER_URL=http://localhost:16686
 ```
 
-Then in [`src/App.jsx`](src/App.jsx), change:
-```js
-const USE_MOCK = false
-```
-
-Restart the dev server — the dashboard now shows your real service data.
+Restart the dev server — the dashboard now shows your real service data. No code changes needed.
 
 > **Trace ID links** — if `VITE_JAEGER_URL` is set, every trace ID in the Log Explorer becomes a clickable link that opens the trace directly in Jaeger. Without it, trace IDs are shown as plain text. Any Jaeger-compatible UI works (Grafana Tempo, etc.) as long as it uses the `/trace/{id}` URL pattern.
 
@@ -197,11 +225,10 @@ The bundled Go services ship with [OpenTelemetry](https://opentelemetry.io) inst
 ### Running with Jaeger (full trace UI)
 
 ```bash
-cd observex-backend
 docker compose up
 ```
 
-This starts all three services plus an **OTel Collector** (`:4317`/`:4318`) and **Jaeger** (UI at [http://localhost:16686](http://localhost:16686)).
+This starts the dashboard + aggregator. To also spin up an **OTel Collector** and **Jaeger**, add the collector and Jaeger services to [`docker-compose.yml`](docker-compose.yml) — set `OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4318` on the aggregator and point your own services at the same collector. Jaeger UI will be at [http://localhost:16686](http://localhost:16686).
 
 Each service reads `OTEL_EXPORTER_OTLP_ENDPOINT` to decide where to ship spans. Without it, spans are still created (so log entries get real trace IDs) but are discarded.
 
@@ -235,7 +262,7 @@ The following would take this further:
 - [ ] **Native OTLP log ingestion** — instead of polling `/logs`, accept logs pushed via OTLP so services don't need to maintain their own ring buffer. Would need a log storage backend (e.g. Loki) and a query adapter in the aggregator.
 - [ ] **Prometheus metrics backend** — replace the `/metrics` poll with a Prometheus query API adapter so the aggregator reads from an existing Prometheus instead of scraping services directly.
 - [ ] **Grafana Tempo / Zipkin support** — the Jaeger trace link currently assumes the `/trace/{id}` URL pattern. A `VITE_TRACE_BACKEND=tempo|jaeger|zipkin` flag could adapt the link format per backend.
-- [ ] **More than 2 services** — aggregator is currently hardcoded to auth-service + order-service. Make it read a service registry (env var list or config file) so any number of services can be added without code changes.
+- [x] **More than 2 services** — aggregator reads `SERVICES=name=url,name=url,...` so any number of services can be monitored without code changes.
 - [ ] **WebSocket / SSE push** — replace the 15-second poll in `useDashboardData.js` with a server-sent events stream for true real-time updates.
 - [ ] **Alerting webhooks** — when a threshold is breached (latency, error rate, uptime), POST to a Slack / PagerDuty / webhook URL instead of only showing the bell icon.
 
@@ -244,12 +271,15 @@ The following would take this further:
 ## Project Structure
 
 ```
+aggregator/
+  main.go                        # Go aggregator — scrapes services, serves /api/*
+  Dockerfile                     # Multi-stage build (golang:alpine → alpine)
 src/
-  App.jsx                        # Root — owns page state, USE_MOCK switch
+  App.jsx                        # Root — VITE_USE_MOCK switch
   hooks/
     useDashboardData.js          # Fetches all endpoints, polls every 15s
   data/
-    mockData.js                  # Simulated data (used when USE_MOCK=true)
+    mockData.js                  # Simulated data (used when VITE_USE_MOCK != "false")
   components/
     layout/
       Sidebar.jsx                # Nav sidebar
@@ -264,4 +294,7 @@ src/
     Dashboard.jsx                # Main dashboard layout
     Services.jsx                 # Expanded service cards
     Logs.jsx                     # Full-page log explorer
+Dockerfile                       # Frontend — builds React, serves via nginx
+nginx.conf                       # Proxies /api/* → aggregator, serves SPA
+docker-compose.yml               # Starts aggregator + dashboard together
 ```

@@ -1,13 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
-const SERVICES = [
-  { key: 'auth-service',    color: '#60a5fa' },
-  { key: 'order-service',   color: '#a78bfa' },
-  { key: 'payment-service', color: '#34d399' },
-]
+const COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#f59e0b', '#f87171', '#38bdf8', '#e879f9', '#a3e635']
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -28,11 +24,16 @@ function CustomTooltip({ active, payload, label }) {
 export default function LatencyChart({ data }) {
   const [hidden, setHidden] = useState({})
 
+  const services = useMemo(() => {
+    const keys = data.length > 0 ? Object.keys(data[0]).filter(k => k !== 'time') : []
+    return keys.map((key, i) => ({ key, color: COLORS[i % COLORS.length] }))
+  }, [data])
+
   function toggle(key) {
     setHidden(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const visibleServices = SERVICES.filter(s => data.some(d => d[s.key] !== undefined))
+  const visibleServices = services
 
   return (
     <div className="rounded-xl border border-[#1f2937] bg-[#111827] p-5">
@@ -68,7 +69,7 @@ export default function LatencyChart({ data }) {
       <ResponsiveContainer width="100%" height={200}>
         <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <defs>
-            {SERVICES.map(({ key, color }) => (
+            {services.map(({ key, color }) => (
               <linearGradient key={key} id={`latgrad-${key}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.25} />
                 <stop offset="100%" stopColor={color} stopOpacity={0.02} />

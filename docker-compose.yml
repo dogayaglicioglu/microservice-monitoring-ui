@@ -1,0 +1,15 @@
+services:
+  aggregator:
+    build: ./aggregator
+    environment:
+      # Add your services here: name=url,name=url,...
+      - SERVICES=auth-service=http://host.docker.internal:3001,order-service=http://host.docker.internal:3002
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  dashboard:
+    build: .
+    ports:
+      - "3000:80"
+    depends_on:
+      - aggregator

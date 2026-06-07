@@ -1,13 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
-const SERVICES = [
-  { key: 'auth-service',    color: '#60a5fa' },
-  { key: 'order-service',   color: '#a78bfa' },
-  { key: 'payment-service', color: '#34d399' },
-]
+const COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#f59e0b', '#f87171', '#38bdf8', '#e879f9', '#a3e635']
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -28,11 +24,16 @@ function CustomTooltip({ active, payload, label }) {
 export default function RequestChart({ data }) {
   const [hidden, setHidden] = useState({})
 
+  const services = useMemo(() => {
+    const keys = data.length > 0 ? Object.keys(data[0]).filter(k => k !== 'time') : []
+    return keys.map((key, i) => ({ key, color: COLORS[i % COLORS.length] }))
+  }, [data])
+
   function toggle(key) {
     setHidden(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const visibleServices = SERVICES.filter(s => data.some(d => d[s.key] !== undefined))
+  const visibleServices = services
 
   return (
     <div className="rounded-xl border border-[#1f2937] bg-[#111827] p-5">

@@ -5,8 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Services from './pages/Services'
 import Logs from './pages/Logs'
 
-// Switch USE_MOCK to false once your aggregator API is running
-const USE_MOCK = true
+const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
 
 // Mock data (used while USE_MOCK = true)
 import {
